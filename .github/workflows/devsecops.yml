@@ -15,6 +15,6 @@ jobs:
             devguard-api-url: "https://api.devguard.org"
             devguard-web-ui: "https://app.devguard.org"
             image: "ghcr.io/lakshay-trehan-2005/authforge-express-thesis-geminigenerated:${{ github.ref_name }}-amd64"
-            devguard-artifact-name: "backend"
+            should-deploy: false
         secrets:
             devguard-token: "${{ secrets.DEVGUARD_TOKEN }}" # you need to create this secret in your GitHub repository settings
