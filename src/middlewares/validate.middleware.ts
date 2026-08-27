@@ -16,12 +16,14 @@ export const validate = (schema: ZodType) => {
         req.body = parsed.body;
       }
       if (parsed.query !== undefined) {
-        // req.query is a getter/read-only on Request; mutate the object instead of re-assigning it
-        Object.assign(req.query, parsed.query);
+        for (const key of Object.keys(parsed.query)) {
+          req.query[key] = parsed.query[key];
+        }
       }
       if (parsed.params !== undefined) {
-        // req.params is a getter/read-only on Request; mutate the object instead of re-assigning it
-        Object.assign(req.params, parsed.params);
+        for (const key of Object.keys(parsed.params)) {
+          req.params[key] = parsed.params[key];
+        }
       }
       
       next();

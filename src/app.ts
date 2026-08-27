@@ -17,6 +17,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Healthcheck route for Docker
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).send('OK');
+});
+
 // 4. API Routes
 app.use('/api', routes);
 
