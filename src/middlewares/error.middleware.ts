@@ -1,69 +1,74 @@
 import { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
-import ApiError from '../utils/ApiError';
-import env from '../config/env';
+import { ApiError } from '../utils/ApiError';
+import { env } from '../config/env';
 
+/**
+ * notFoundHandler
+ *
+ * Catch-all for routes that were not matched; produces a 404 ApiError.
+ */
+export function notFoundHandler(req: Request, _res: Response, next: NextFunction): void {
+  next(ApiError.notFound(`Route ${req.method} ${req.originalUrl} not found`));
+}
+
+/**
+ * errorHandler
+ *
+ * Central Express error-handling middleware. Must have exactly 4 parameters.
+ * Formats errors into a consistent JSON envelope.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const errorHandler: ErrorRequestHandler = (
-  err: any,
-  req: Request,
+  err: Error | ApiError,
+  _req: Request,
   res: Response,
-  next: NextFunction
+  // next is required by Express to identify this as an error handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _next: NextFunction
 ): void => {
-  let statusCode = err.statusCode || 500;
-  let message = err.message || 'Internal Server Error';
-  let errors = err.errors;
-
-  // Handle Mongoose duplicate key error (code 11000)
-  if (err.code === 11000) {
-    statusCode = 409;
-    const field = Object.keys(err.keyValue || {}).join(', ');
-    message = field ? `Duplicate field: ${field} already exists.` : 'Resource already exists.';
+  // Handle known operational errors
+  if (err instanceof ApiError && err.isOperational) {
+    res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      ...(err.errors && err.errors.length > 0 ? { errors: err.errors } : {}),
+    });
+    return;
   }
 
-  // Handle Mongoose validation errors
+  // Mongoose duplicate key error (e.g. unique email)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mongoErr = err as any;
+  if (mongoErr.code === 11000 && mongoErr.keyValue) {
+    const field = Object.keys(mongoErr.keyValue)[0];
+    res.status(409).json({
+      success: false,
+      message: `A record with this ${field} already exists`,
+    });
+    return;
+  }
+
+  // Mongoose validation error
   if (err.name === 'ValidationError') {
-    statusCode = 400;
-    message = err.message;
-    errors = Object.values(err.errors || {}).map((e: any) => ({
-      field: e.path,
-      message: e.message,
-    }));
+    const messages = Object.values((err as unknown as { errors: Record<string, { message: string }> }).errors).map(
+      (e) => e.message
+    );
+    res.status(400).json({
+      success: false,
+      message: 'Validation error',
+      errors: messages,
+    });
+    return;
   }
 
-  // Handle JWT signature error
-  if (err.name === 'JsonWebTokenError') {
-    statusCode = 401;
-    message = 'Unauthorized: Invalid access token signature';
-  }
+  // Log unhandled / programming errors (do NOT expose internals to client)
+  console.error('[Unhandled Error]', err);
 
-  // Handle JWT expiration error
-  if (err.name === 'TokenExpiredError') {
-    statusCode = 401;
-    message = 'Unauthorized: Access token has expired';
-  }
-
-  // Hide internal server errors details in production
-  if (statusCode === 500 && env.NODE_ENV === 'production') {
-    message = 'Something went wrong on our end';
-  }
-
-  const responseBody: {
-    success: boolean;
-    message: string;
-    errors?: any[];
-    stack?: string;
-  } = {
+  res.status(500).json({
     success: false,
-    message,
-    ...(errors && { errors }),
-    ...(env.NODE_ENV === 'development' && { stack: err.stack }),
-  };
-
-  // Log server errors (500)
-  if (statusCode === 500) {
-    console.error(`💥 [500 Error]: ${err.stack || err}`);
-  }
-
-  res.status(statusCode).json(responseBody);
+    message: env.isProduction
+      ? 'An unexpected error occurred. Please try again later.'
+      : (err.message ?? 'Internal server error'),
+    ...(env.isProduction ? {} : { stack: err.stack }),
+  });
 };
-
-export default errorHandler;

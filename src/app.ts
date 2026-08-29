@@ -1,36 +1,72 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import routes from './routes';
-import errorHandler from './middlewares/error.middleware';
-import ApiError from './utils/ApiError';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+
+import { env } from './config/env';
+import routes from './routes/index';
+import { globalRateLimiter } from './middlewares/rateLimit.middleware';
+import { notFoundHandler, errorHandler } from './middlewares/error.middleware';
 
 const app: Application = express();
 
-// 1. Set Security HTTP headers
+// ─── Security ─────────────────────────────────────────────────────────────────
+
+// Set security-related HTTP headers
 app.use(helmet());
 
-// 2. Enable CORS
-app.use(cors());
+// CORS configuration
+app.use(
+  cors({
+    origin: env.cors.origin,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 
-// 3. Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Trust the first proxy (needed for req.ip behind load balancers / Nginx)
+app.set('trust proxy', 1);
 
-// Healthcheck route for Docker
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).send('OK');
-});
+// Global IP-based rate limiter
+app.use(globalRateLimiter);
 
-// 4. API Routes
+// ─── Logging ──────────────────────────────────────────────────────────────────
+
+if (!env.isProduction) {
+  app.use(morgan('dev'));
+} else {
+  // Combined format for production log aggregators (ELK, Datadog, etc.)
+  app.use(morgan('combined'));
+}
+
+// ─── Body Parsing ─────────────────────────────────────────────────────────────
+
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(cookieParser());
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
+// Mount all application routes under /api
 app.use('/api', routes);
 
-// 5. Catch-all for undefined routes
-app.use((req: Request, res: Response, next: NextFunction) => {
-  next(new ApiError(404, `Cannot find ${req.originalUrl} on this server`));
+// Root sanity-check
+app.get('/', (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: 'Auth Microservice is running',
+    version: '1.0.0',
+  });
 });
 
-// 6. Global centralized error handler
+// ─── Error Handling ───────────────────────────────────────────────────────────
+
+// 404 — must come after all routes
+app.use(notFoundHandler);
+
+// Global error handler — must have 4 parameters (err, req, res, next)
 app.use(errorHandler);
 
 export default app;

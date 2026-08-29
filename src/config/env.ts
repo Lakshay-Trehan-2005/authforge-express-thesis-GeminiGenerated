@@ -1,28 +1,47 @@
 import dotenv from 'dotenv';
-import { z } from 'zod';
 import path from 'path';
 
-// Load environment variables from .env file
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Load .env file from project root
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const envSchema = z.object({
-  PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),
-  NODE_ENV: z.enum(['development', 'production', 'test'] as const).default('development'),
-  MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
-  JWT_ACCESS_SECRET: z.string().min(1, 'JWT_ACCESS_SECRET is required'),
-  JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
-  JWT_ACCESS_EXPIRATION: z.string().default('15m'),
-  JWT_REFRESH_EXPIRATION: z.string().default('7d'),
-  RATE_LIMIT_WINDOW_MS: z.string().default('900000').transform((val) => parseInt(val, 10)), // 15 mins
-  RATE_LIMIT_MAX: z.string().default('100').transform((val) => parseInt(val, 10)), // 100 requests per IP
-});
-
-const parsedEnv = envSchema.safeParse(process.env);
-
-if (!parsedEnv.success) {
-  console.error('❌ Invalid environment variables:', parsedEnv.error.format());
-  process.exit(1);
+function requireEnv(key: string): string {
+  const value = process.env[key];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
 }
 
-export const env = parsedEnv.data;
-export default env;
+function optionalEnv(key: string, defaultValue: string): string {
+  return process.env[key] ?? defaultValue;
+}
+
+export const env = {
+  port: parseInt(optionalEnv('PORT', '3000'), 10),
+  nodeEnv: optionalEnv('NODE_ENV', 'development'),
+  isProduction: optionalEnv('NODE_ENV', 'development') === 'production',
+
+  mongo: {
+    uri: requireEnv('MONGO_URI'),
+  },
+
+  jwt: {
+    accessSecret: requireEnv('JWT_ACCESS_SECRET'),
+    refreshSecret: requireEnv('JWT_REFRESH_SECRET'),
+    accessExpiresIn: optionalEnv('JWT_ACCESS_EXPIRES_IN', '15m'),
+    refreshExpiresIn: optionalEnv('JWT_REFRESH_EXPIRES_IN', '7d'),
+  },
+
+  rateLimit: {
+    windowMs: parseInt(optionalEnv('RATE_LIMIT_WINDOW_MS', '900000'), 10), // 15 min
+    max: parseInt(optionalEnv('RATE_LIMIT_MAX', '100'), 10),
+  },
+
+  cors: {
+    origin: optionalEnv('CORS_ORIGIN', 'http://localhost:5173'),
+  },
+
+  bcrypt: {
+    saltRounds: parseInt(optionalEnv('BCRYPT_SALT_ROUNDS', '12'), 10),
+  },
+} as const;

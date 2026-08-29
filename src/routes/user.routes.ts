@@ -1,12 +1,31 @@
 import { Router } from 'express';
-import userController from '../controllers/user.controller';
-import validate from '../middlewares/validate.middleware';
+import { validate } from '../middlewares/validate.middleware';
+import { authRateLimiter } from '../middlewares/rateLimit.middleware';
 import { registerSchema } from '../validators/user.validator';
-import authLimiter from '../middlewares/rateLimit.middleware';
+import { authMiddleware } from '../middlewares/auth.middleware';
+import {
+  registerUser,
+  getMe,
+} from '../controllers/user.controller';
 
 const router = Router();
 
-// POST /api/users - Register a new user (with IP rate limiting)
-router.post('/', authLimiter, validate(registerSchema), userController.register);
+/**
+ * POST /api/users
+ * Register a new user.
+ * Rate-limited to prevent mass account creation.
+ */
+router.post(
+  '/',
+  authRateLimiter,
+  validate(registerSchema),
+  registerUser
+);
+
+/**
+ * GET /api/users/me
+ * Retrieve the authenticated user's own profile.
+ */
+router.get('/me', authMiddleware, getMe);
 
 export default router;

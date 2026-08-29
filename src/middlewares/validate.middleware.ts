@@ -1,44 +1,34 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodType, ZodError } from 'zod';
-import ApiError from '../utils/ApiError';
+import Joi from 'joi';
+import { ApiError } from '../utils/ApiError';
 
-export const validate = (schema: ZodType) => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const parsed = (await schema.parseAsync({
-        body: req.body,
-        query: req.query,
-        params: req.params,
-      })) as any;
-      
-      // Re-assign parsed values to request
-      if (parsed.body !== undefined) {
-        req.body = parsed.body;
-      }
-      if (parsed.query !== undefined) {
-        for (const key of Object.keys(parsed.query)) {
-          req.query[key] = parsed.query[key];
-        }
-      }
-      if (parsed.params !== undefined) {
-        for (const key of Object.keys(parsed.params)) {
-          req.params[key] = parsed.params[key];
-        }
-      }
-      
-      next();
-    } catch (error) {
-      if (error instanceof ZodError) {
-        const errorDetails = error.issues.map((err) => ({
-          field: err.path.join('.').replace(/^(body|query|params)\./, ''),
-          message: err.message,
-        }));
-        next(new ApiError(400, 'Validation error', true, errorDetails));
-      } else {
-        next(error);
-      }
+type ValidationTarget = 'body' | 'query' | 'params';
+
+/**
+ * validate
+ *
+ * Factory that returns a middleware validating the specified request target
+ * against a Joi schema. On failure, passes a 400 ApiError with all
+ * Joi validation messages.
+ *
+ * @param schema  - Joi object schema
+ * @param target  - 'body' | 'query' | 'params'  (default: 'body')
+ */
+export function validate(schema: Joi.ObjectSchema, target: ValidationTarget = 'body') {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const { error, value } = schema.validate(req[target], {
+      abortEarly: false,    // collect ALL errors
+      stripUnknown: true,   // remove unknown keys (security)
+      convert: true,        // coerce types (lowercase, trim, etc.)
+    });
+
+    if (error) {
+      const messages = error.details.map((d) => d.message);
+      return next(ApiError.badRequest('Validation failed', messages));
     }
-  };
-};
 
-export default validate;
+    // Replace request data with the sanitised/coerced value
+    req[target] = value;
+    next();
+  };
+}

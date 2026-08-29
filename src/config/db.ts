@@ -1,22 +1,46 @@
 import mongoose from 'mongoose';
-import env from './env';
+import { env } from './env';
 
-export const connectDB = async (): Promise<void> => {
+let isConnected = false;
+
+export async function connectDB(): Promise<void> {
+  if (isConnected) return;
+
   try {
-    const conn = await mongoose.connect(env.MONGO_URI);
-    console.log(`📡 MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`❌ MongoDB connection error: ${error instanceof Error ? error.message : error}`);
+    mongoose.set('strictQuery', true);
+
+    await mongoose.connect(env.mongo.uri, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+
+    isConnected = true;
+    console.info(`[MongoDB] Connected to ${env.mongo.uri}`);
+
+    mongoose.connection.on('error', (err) => {
+      console.error('[MongoDB] Connection error:', err.message);
+      isConnected = false;
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.warn('[MongoDB] Disconnected. Will attempt to reconnect...');
+      isConnected = false;
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.info('[MongoDB] Reconnected successfully.');
+      isConnected = true;
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[MongoDB] Initial connection failed: ${message}`);
     process.exit(1);
   }
-};
+}
 
-mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️ MongoDB connection disconnected. Retrying...');
-});
-
-mongoose.connection.on('error', (err) => {
-  console.error(`❌ MongoDB database error: ${err}`);
-});
-
-export default connectDB;
+export async function disconnectDB(): Promise<void> {
+  if (!isConnected) return;
+  await mongoose.disconnect();
+  isConnected = false;
+  console.info('[MongoDB] Disconnected gracefully.');
+}

@@ -1,11 +1,20 @@
 import { Router } from 'express';
-import refreshController from '../controllers/refresh.controller';
-import validate from '../middlewares/validate.middleware';
-import { refreshSchema } from '../validators/session.validator';
+import { validate } from '../middlewares/validate.middleware';
+import { authRateLimiter } from '../middlewares/rateLimit.middleware';
+import { refreshTokenSchema } from '../validators/session.validator';
+import { refreshToken } from '../controllers/refresh.controller';
 
 const router = Router();
 
-// POST /api/token - Refresh access token using active refresh token
-router.post('/', validate(refreshSchema), refreshController.refresh);
+/**
+ * POST /api/token
+ * Accept a valid refresh token and return a new access token.
+ */
+router.post(
+  '/',
+  authRateLimiter,
+  validate(refreshTokenSchema),
+  refreshToken
+);
 
 export default router;

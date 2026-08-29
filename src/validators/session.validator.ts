@@ -1,24 +1,37 @@
-import { z } from 'zod';
+import Joi from 'joi';
 
-export const loginSchema = z.object({
-  body: z.object({
-    email: z
-      .string({ message: 'Email is required' })
-      .min(1, 'Email is required')
-      .email('Please enter a valid email address'),
-    password: z
-      .string({ message: 'Password is required' })
-      .min(1, 'Password cannot be empty'),
+// ─── Create Session (Login) ───────────────────────────────────────────────────
+// Delegates to user.validator loginSchema but kept separate
+// so session-specific fields can be added independently.
+
+export const createSessionSchema = Joi.object({
+  email: Joi.string()
+    .email({ tlds: { allow: false } })
+    .required()
+    .lowercase()
+    .trim()
+    .messages({
+      'string.email': 'Please provide a valid email address',
+      'any.required': 'Email is required',
+    }),
+
+  password: Joi.string().required().messages({
+    'any.required': 'Password is required',
   }),
 });
 
-export const refreshSchema = z.object({
-  body: z.object({
-    refreshToken: z
-      .string({ message: 'Refresh token is required' })
-      .min(1, 'Refresh token cannot be empty'),
+// ─── Refresh Token ────────────────────────────────────────────────────────────
+
+export const refreshTokenSchema = Joi.object({
+  refreshToken: Joi.string().required().messages({
+    'any.required': 'Refresh token is required',
   }),
 });
 
-export type LoginInput = z.infer<typeof loginSchema>;
-export type RefreshInput = z.infer<typeof refreshSchema>;
+// ─── Logout ───────────────────────────────────────────────────────────────────
+
+export const logoutSchema = Joi.object({
+  refreshToken: Joi.string().required().messages({
+    'any.required': 'Refresh token is required',
+  }),
+});

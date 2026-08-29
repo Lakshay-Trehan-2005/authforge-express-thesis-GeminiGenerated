@@ -1,19 +1,55 @@
-import { z } from 'zod';
+import Joi from 'joi';
 
-export const registerSchema = z.object({
-  body: z.object({
-    email: z
-      .string({ message: 'Email is required' })
-      .min(1, 'Email is required')
-      .email('Please enter a valid email address'),
-    password: z
-      .string({ message: 'Password is required' })
-      .min(6, 'Password must be at least 6 characters long'),
-    role: z
-      .enum(['user', 'admin'] as const, { message: 'Role must be user or admin' })
-      .optional()
-      .default('user'),
-  }),
+// ─── Register ────────────────────────────────────────────────────────────────
+
+export const registerSchema = Joi.object({
+  email: Joi.string()
+    .email({ tlds: { allow: false } })
+    .required()
+    .lowercase()
+    .trim()
+    .messages({
+      'string.email': 'Please provide a valid email address',
+      'any.required': 'Email is required',
+    }),
+
+  password: Joi.string()
+    .min(8)
+    .max(128)
+    .pattern(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_+=\-{}|:;<>,.?\/])/
+    )
+    .required()
+    .messages({
+      'string.min': 'Password must be at least 8 characters',
+      'string.max': 'Password must not exceed 128 characters',
+      'string.pattern.base':
+        'Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character',
+      'any.required': 'Password is required',
+    }),
+
+  role: Joi.string()
+    .valid('user', 'admin')
+    .default('user')
+    .messages({
+      'any.only': 'Role must be either "user" or "admin"',
+    }),
 });
 
-export type RegisterInput = z.infer<typeof registerSchema>;
+// ─── Login ───────────────────────────────────────────────────────────────────
+
+export const loginSchema = Joi.object({
+  email: Joi.string()
+    .email({ tlds: { allow: false } })
+    .required()
+    .lowercase()
+    .trim()
+    .messages({
+      'string.email': 'Please provide a valid email address',
+      'any.required': 'Email is required',
+    }),
+
+  password: Joi.string().required().messages({
+    'any.required': 'Password is required',
+  }),
+});

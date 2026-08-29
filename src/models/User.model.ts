@@ -1,19 +1,33 @@
-import { Schema, model, Document } from 'mongoose';
+import mongoose, { Document, Model, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { env } from '../config/env';
+
+// ─── Role Enum ───────────────────────────────────────────────────────────────
+
+export type UserRole = 'user' | 'admin';
+
+// ─── Interface ───────────────────────────────────────────────────────────────
 
 export interface IUser {
   email: string;
-  password?: string;
-  role: 'user' | 'admin';
-  createdAt?: Date;
-  updatedAt?: Date;
+  password: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface IUserDocument extends IUser, Document {
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
-const userSchema = new Schema<IUserDocument>(
+export interface IUserModel extends Model<IUserDocument> {
+  findByEmail(email: string): Promise<IUserDocument | null>;
+}
+
+// ─── Schema ──────────────────────────────────────────────────────────────────
+
+const userSchema = new Schema<IUserDocument, IUserModel>(
   {
     email: {
       type: String,
@@ -22,43 +36,62 @@ const userSchema = new Schema<IUserDocument>(
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address'],
+      index: true,
     },
     password: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: [6, 'Password must be at least 6 characters long'],
-      select: false, // Prevents password from being returned in queries by default
+      minlength: [8, 'Password must be at least 8 characters'],
+      select: false, // never returned by default in queries
     },
     role: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: ['user', 'admin'] as UserRole[],
       default: 'user',
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
     },
   },
   {
     timestamps: true,
+    toJSON: {
+      transform(_doc, ret: Record<string, unknown>) {
+        delete ret['password'];
+        delete ret['__v'];
+        return ret;
+      },
+    },
   }
 );
 
-// Pre-save hook to hash password if it was modified
-userSchema.pre('save', async function (this: IUserDocument) {
-  if (!this.isModified('password')) {
-    return;
-  }
+// ─── Pre-save: Hash Password ──────────────────────────────────────────────────
 
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password || '', salt);
-  } catch (error) {
-    throw error;
-  }
+userSchema.pre('save', async function (this: IUserDocument) {
+  if (!this.isModified('password')) return;
+  const salt = await bcrypt.genSalt(env.bcrypt.saltRounds);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Instance method to check password match
-userSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
-  if (!this.password) return false;
+// ─── Instance Method: Compare Password ───────────────────────────────────────
+
+userSchema.methods.comparePassword = async function (
+  this: IUserDocument,
+  candidatePassword: string
+): Promise<boolean> {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-export const User = model<IUserDocument>('User', userSchema);
-export default User;
+// ─── Static Method: Find By Email ────────────────────────────────────────────
+
+userSchema.statics.findByEmail = function (
+  this: IUserModel,
+  email: string
+): Promise<IUserDocument | null> {
+  return this.findOne({ email: email.toLowerCase().trim() }).select('+password').exec();
+};
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+export const User = mongoose.model<IUserDocument, IUserModel>('User', userSchema);

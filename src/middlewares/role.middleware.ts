@@ -1,20 +1,33 @@
 import { Request, Response, NextFunction } from 'express';
-import ApiError from '../utils/ApiError';
+import { UserRole } from '../models/User.model';
+import { ApiError } from '../utils/ApiError';
 
-export const restrictTo = (...allowedRoles: ('user' | 'admin')[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+/**
+ * roleMiddleware
+ *
+ * Factory that returns a middleware allowing only the specified roles.
+ * Must be used after authMiddleware (which populates req.user).
+ *
+ * @example
+ * router.get('/admin', authMiddleware, roleMiddleware('admin'), handler);
+ * router.get('/any',   authMiddleware, roleMiddleware('user', 'admin'), handler);
+ */
+export function roleMiddleware(...allowedRoles: UserRole[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
-      return next(new ApiError(401, 'Unauthorized: User authentication is required'));
+      return next(ApiError.unauthorized());
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const userRole = req.user.role as UserRole;
+
+    if (!allowedRoles.includes(userRole)) {
       return next(
-        new ApiError(403, `Forbidden: You do not have permission to access this resource`)
+        ApiError.forbidden(
+          `Access denied. Required role(s): ${allowedRoles.join(', ')}`
+        )
       );
     }
 
     next();
   };
-};
-
-export default restrictTo;
+}

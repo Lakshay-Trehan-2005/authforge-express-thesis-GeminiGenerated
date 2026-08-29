@@ -1,24 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
-import refreshService from '../services/refresh.service';
+import { refreshAccessToken } from '../services/refresh.service';
 
-export class RefreshController {
-  /**
-   * Refresh token handler
-   */
-  public refresh = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { refreshToken } = req.body;
-      const result = await refreshService.refreshAccessToken(refreshToken);
+/**
+ * POST /api/token
+ * Accept a valid refresh token and return a new short-lived access token.
+ */
+export async function refreshToken(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { refreshToken: incomingToken } = req.body as { refreshToken: string };
 
-      res.status(200).json({
-        success: true,
-        message: 'Access token refreshed successfully',
-        data: result,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
+    const result = await refreshAccessToken(incomingToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Access token refreshed',
+      data: {
+        accessToken: result.accessToken,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 }
-
-export default new RefreshController();
